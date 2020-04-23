@@ -1,0 +1,131 @@
+PROGRAM DIO_SERVER
+%STACKSIZE = 4000
+%NOLOCKGROUP
+%NOPAUSE=ERROR+COMMAND+TPENABLE
+%ENVIRONMENT uif
+%ENVIRONMENT sysdef
+%ENVIRONMENT memo
+%ENVIRONMENT kclop
+%ENVIRONMENT bynam
+%ENVIRONMENT fdev
+%ENVIRONMENT flbt
+%INCLUDE klevccdf
+%INCLUDE klevkeys
+%INCLUDE klevkmsk
+-------------------------------------------------------------------------------
+VAR
+      file_var : FILE
+      dout_str : STRING[128]
+      din_str : STRING[128]
+      aout_str : STRING[8]
+      ain_str : STRING[8]
+      rout_str : STRING[8]
+      rin_str : STRING[8]
+      apr_ttl_str : STRING[32]
+      batch_number :INTEGER
+      batch_size :INTEGER
+      crr_io_idx: INTEGER    
+      this_batch : INTEGER
+      STATUS : INTEGER
+      entry : INTEGER
+      io_val   : BOOLEAN
+      aio_val   : INTEGER
+
+-------------------------------------------------------------------------------
+-- strip whitespace from left side of string
+ROUTINE lstrip(s : STRING) : STRING
+  VAR
+    i : INTEGER
+  BEGIN
+    FOR i = 1 TO STR_LEN(s) DO
+      IF SUB_STR(s,i,1) <> ' ' THEN
+        RETURN(SUB_STR(s,i,STR_LEN(s)))
+      ENDIF
+    ENDFOR
+
+    RETURN(s)
+  END lstrip
+
+-- BOOLEAN to string converter function
+ROUTINE b_to_s(b : BOOLEAN) : STRING
+  BEGIN
+    IF b THEN
+      RETURN('1')
+    ELSE
+      RETURN('0')
+    ENDIF
+END b_to_s
+
+--INTEGER to STRING converter function
+ROUTINE i_to_s(i : INTEGER) : STRING
+  VAR
+    s : STRING[16]
+  BEGIN
+    IF UNINIT(i) THEN
+      RETURN('null')
+    ENDIF
+
+    CNV_INT_STR(i, 0, 0, s)
+    RETURN(lstrip(s)) 
+  END i_to_s
+
+
+-- Begin program
+BEGIN
+
+--initilize strings
+din_str = 'DI'
+dout_str= 'DO'
+rin_str = 'RI:'
+rout_str= 'RO'
+ain_str = 'AI'
+aout_str= 'AO'
+
+SET_FILE_ATR(file_var, ATR_IA)
+-- set the server port before doing a connect
+SET_VAR(entry, '*SYSTEM*','$HOSTS_CFG[5].$SERVER_PORT',59002,STATUS)
+--debug meesag printed on teach pendant
+WRITE('Connecting..',CR)
+--Connect to server no:5(S5)
+MSG_CONNECT('S5:',STATUS)
+--debug message to show wheter connection was successful
+WRITE(' CONNECT STATUS = ',STATUS,CR)
+
+--if connection is allright loop 
+WHILE STATUS = 0 DO
+      OPEN FILE file_var ('rw','S5:')
+      FOR batch_number = 1 TO 128 DO
+            IF  batch_number < 9 THEN 
+                  io_val = RDI[batch_number]
+                  rin_str = rin_str + b_to_s(io_val)     
+                  io_val = RDO[batch_number]
+                  rout_str = rout_str + b_to_s(io_val)    
+                  ------------------------------------------
+                  aio_val = AIN[batch_number]
+                  ain_str = ain_str + i_to_s(aio_val)     
+                  aio_val = AOUT[batch_number]
+                  aout_str = aout_str + i_to_s(aio_val)            
+            ENDIF
+
+
+            io_val = DIN[batch_number]
+            din_str = din_str + b_to_s(io_val)     
+            io_val = DOUT[batch_number]
+            dout_str = dout_str + b_to_s(io_val)
+                   
+      ENDFOR
+      STATUS = IO_STATUS(file_var)
+      apr_ttl_str = rin_str + rout_str + ain_str + aout_str
+      IF STATUS = 0 THEN            
+            BYTES_AHEAD(file_var, entry, STATUS)
+            WRITE file_var(din_str)
+            WRITE file_var(dout_str)
+            WRITE file_var(apr_ttl_str)
+      ENDIF
+      
+      CLOSE FILE file_var
+      WRITE('Disconnecting..',CR)
+ENDWHILE      
+MSG_DISCO('S5:',STATUS)
+WRITE('Done.',CR)      
+END DIO_SERVER

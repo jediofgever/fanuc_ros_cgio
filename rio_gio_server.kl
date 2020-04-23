@@ -1,0 +1,92 @@
+PROGRAM RIO_GIO_SVR
+%STACKSIZE = 4000
+%NOLOCKGROUP
+%NOPAUSE=ERROR+COMMAND+TPENABLE
+%ENVIRONMENT uif
+%ENVIRONMENT sysdef
+%ENVIRONMENT memo
+%ENVIRONMENT kclop
+%ENVIRONMENT bynam
+%ENVIRONMENT fdev
+%ENVIRONMENT flbt
+%INCLUDE klevccdf
+%INCLUDE klevkeys
+%INCLUDE klevkmsk
+-------------------------------------------------------------------------------
+VAR
+      file_var : FILE
+      rout_str : STRING[254]
+      rin_str : STRING[254]
+      gout_str : STRING[254]
+      gin_str : STRING[254]
+      batch_number :INTEGER
+      batch_size :INTEGER
+      crr_io_idx: INTEGER    
+      this_batch : INTEGER
+      STATUS : INTEGER
+      entry : INTEGER
+      io_val   : BOOLEAN
+-------------------------------------------------------------------------------
+
+
+
+ROUTINE b_to_s(b : BOOLEAN) : STRING
+  BEGIN
+    IF b THEN
+      RETURN('1')
+    ELSE
+      RETURN('0')
+    ENDIF
+END b_to_s
+
+
+
+--DIN/DOUT
+BEGIN
+SET_FILE_ATR(file_var, ATR_IA)
+-- set the server port before doing a connect
+SET_VAR(entry, '*SYSTEM*','$HOSTS_CFG[5].$SERVER_PORT',59002,STATUS)
+WRITE('Connecting..',CR)
+MSG_CONNECT('S5:',STATUS)
+WRITE(' CONNECT STATUS = ',STATUS,CR)
+
+WHILE STATUS = 0 DO
+      WRITE ('Opening',CR)
+      OPEN FILE file_var ('rw','S5:')
+      gin_str = 'GIN:'
+      gout_str= 'GOUT:'
+      rin_str = 'RIN:'
+      rout_str= 'ROUT:'
+      FOR batch_number = 1 TO 8 DO
+
+            io_val = RDI[batch_number]
+            rin_str = rin_str + b_to_s(io_val)     
+            ----------------------------------------------
+            io_val = RDO[batch_number]
+            rout_str = rout_str + b_to_s(io_val)               
+      ENDFOR
+
+      FOR batch_number = 1 TO 100 DO
+
+            io_val = GIN[batch_number]
+            gin_str = gin_str + b_to_s(io_val)     
+            ----------------------------------------------
+            io_val = GOUT[batch_number]
+            gout_str = gout_str + b_to_s(io_val)               
+      ENDFOR
+      STATUS = IO_STATUS(file_var)
+      gin_str = gin_str+rin_str
+      gout_str =gout_str+rout_str
+      IF STATUS = 0 THEN            
+            BYTES_AHEAD(file_var, entry, STATUS)
+            WRITE file_var(gin_str)
+            WRITE file_var(gout_str)
+
+      ENDIF
+      
+      CLOSE FILE file_var
+      WRITE('Disconnecting..',CR)
+ENDWHILE      
+MSG_DISCO('S5:',STATUS)
+WRITE('Done.',CR)      
+END RIO_GIO_SVR
