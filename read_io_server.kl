@@ -28,13 +28,13 @@ PROGRAM IO_SERVER_RD
 -------------------------------------------------------------------------------
 VAR
       file_read : FILE
-      dout_str : STRING[128]
-      din_str : STRING[128]
-      aout_str : STRING[8]
-      ain_str : STRING[8]
-      rout_str : STRING[8]
-      rin_str : STRING[8]
-      apr_ttl_str : STRING[32]
+      dout_str : STRING[130]
+      din_str : STRING[130]
+      aout_str : STRING[10]
+      ain_str : STRING[10]
+      rout_str : STRING[10]
+      rin_str : STRING[10]
+      apr_ttl_str : STRING[40]
       batch_number :INTEGER
       batch_size :INTEGER
       crr_io_idx: INTEGER    
@@ -88,13 +88,6 @@ BEGIN
 
 restart::
 
---initilize strings, these strings can be used to parse output in cliuent side
-din_str = 'DI'
-dout_str= 'DO'
-rin_str = 'RI:'
-rout_str= 'RO'
-ain_str = 'AI'
-aout_str= 'AO'
 
 --must be called to use FILE
 SET_FILE_ATR(file_read, ATR_IA)
@@ -126,7 +119,16 @@ ENDIF
 WHILE STATUS = 0 DO
       --start a file to push our huge string chunk
       OPEN FILE file_read ('rw','S5:')
-      --we will use 128 IO values max, you can adjust this to your own number of IOs      
+      --we will use 128 IO values max, you can adjust this to your own number of IOs   
+
+      --REinitilize strings, these strings can be used to parse output in cliuent side
+      din_str = 'DI'
+      dout_str= 'DO'
+      rin_str = 'RI:'
+      rout_str= 'RO'
+      ain_str = 'AI'
+      aout_str= 'AO'  
+       
       FOR batch_number = 1 TO 128 DO
 
             --Number of AOUT/AIN AND RDO/RDI IS MUCH SMALLER THAN DI/DO, SO WE CAN READ UPTO 128 , 
@@ -167,6 +169,5 @@ ENDWHILE
 
 WRITE('DISCONNECTING FROM READ IO SERVICE, YOU WILL NEED TO RESET AND RUN THE PROGRAM AGAIN.',CR) 
 MSG_DISCO('S5:',STATUS)
-WRITE('Done.',CR)      
-
+GO TO restart
 END IO_SERVER_RD
