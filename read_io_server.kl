@@ -1,0 +1,167 @@
+-- karel program to LISTEN ON tcp IP PORT 59002 FOR reading IO VALUES ON r30 FANUC CONTROLLERS
+-- establish a TCP connection on your robot ip with defined port(59002), after a successful connection,
+-- a huge chunk of string will be recived which needs to be 
+-- parsed on client side , an example output;
+----------------------------------------------------------------------------------------------------------------------------
+--DI0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+--00000000000000000000000000000000DO00000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+--0000000000000000000000000000000000000000RI:00000RO000000AI000000AO020000
+----------------------------------------------------------------------------------------------------------------------------
+--Notice the Letters which describes TYPES of IO(DI FOR DIN, RI for RDI .... )
+-- DI/DO AND RDI/RDO IS boolean while AIN/AOUT IS INTEGER
+
+
+PROGRAM IO_SERVER_RD
+%STACKSIZE = 4000
+%NOLOCKGROUP
+%NOPAUSE=ERROR+COMMAND+TPENABLE
+%ENVIRONMENT uif
+%ENVIRONMENT sysdef
+%ENVIRONMENT memo
+%ENVIRONMENT kclop
+%ENVIRONMENT bynam
+%ENVIRONMENT fdev
+%ENVIRONMENT flbt
+%INCLUDE klevccdf
+%INCLUDE klevkeys
+%INCLUDE klevkmsk
+-------------------------------------------------------------------------------
+VAR
+      file_var : FILE
+      dout_str : STRING[128]
+      din_str : STRING[128]
+      aout_str : STRING[8]
+      ain_str : STRING[8]
+      rout_str : STRING[8]
+      rin_str : STRING[8]
+      apr_ttl_str : STRING[32]
+      batch_number :INTEGER
+      batch_size :INTEGER
+      crr_io_idx: INTEGER    
+      this_batch : INTEGER
+      STATUS : INTEGER
+      entry : INTEGER
+      io_val   : BOOLEAN
+      aio_val   : INTEGER
+
+-------------------------------------------------------------------------------
+-- strip whitespace from left side of string
+ROUTINE lstrip(s : STRING) : STRING
+  VAR
+    i : INTEGER
+  BEGIN
+    FOR i = 1 TO STR_LEN(s) DO
+      IF SUB_STR(s,i,1) <> ' ' THEN
+        RETURN(SUB_STR(s,i,STR_LEN(s)))
+      ENDIF
+    ENDFOR
+
+    RETURN(s)
+  END lstrip
+
+-- BOOLEAN to string converter function
+ROUTINE b_to_s(b : BOOLEAN) : STRING
+  BEGIN
+    IF b THEN
+      RETURN('1')
+    ELSE
+      RETURN('0')
+    ENDIF
+END b_to_s
+
+--INTEGER to STRING converter function
+ROUTINE i_to_s(i : INTEGER) : STRING
+  VAR
+    s : STRING[16]
+  BEGIN
+    IF UNINIT(i) THEN
+      RETURN('null')
+    ENDIF
+
+    CNV_INT_STR(i, 0, 0, s)
+    RETURN(lstrip(s)) 
+  END i_to_s
+
+
+-- Begin program
+BEGIN
+
+restart::
+
+--initilize strings, these strings can be used to parse output in cliuent side
+din_str = 'DI'
+dout_str= 'DO'
+rin_str = 'RI:'
+rout_str= 'RO'
+ain_str = 'AI'
+aout_str= 'AO'
+
+--must be called to use FILE
+SET_FILE_ATR(file_var, ATR_IA)
+
+-- set the server port before doing a connect
+SET_VAR(entry, '*SYSTEM*','$HOSTS_CFG[5].$SERVER_PORT',59002,STATUS)
+
+--debug meesag printed on teach pendant
+WRITE('Starting server for IO Reading service..',CR)
+
+--Connect to server no:5(S5)
+MSG_CONNECT('S5:',STATUS)
+
+--debug message to show wheter connection was successful
+WRITE(' CONNECT STATUS = ',STATUS,CR)
+IF STATUS > 0 THEN
+  WRITE(' There was an error while initilizing IO write Service BUT we will try to connect again, trying...  exit code = ',STATUS,CR)
+  GO TO restart
+ELSE
+  WRITE('Success initilizing IO write service')  
+ENDIF
+
+--if connection is start loop 
+WHILE STATUS = 0 DO
+      --start a file to push our huge string chunk
+      OPEN FILE file_var ('rw','S5:')
+      --we will use 128 IO values max, you can adjust this to your own number of IOs      
+      FOR batch_number = 1 TO 128 DO
+
+            --Number of AOUT/AIN AND RDO/RDI IS MUCH SMALLER THAN DI/DO, SO WE CAN READ UPTO 128 , 
+            --BECAUSE THEY DONT EXIST ON THE CONTROLLER  
+            IF  batch_number < 9 THEN 
+                  
+                  --READ RDI/RDO AND STORE OUTPUT IN STRINGS RESERVERD FOR 
+                  io_val = RDI[batch_number]
+                  rin_str = rin_str + b_to_s(io_val)     
+                  io_val = RDO[batch_number]
+                  rout_str = rout_str + b_to_s(io_val)    
+                  ----------------------------------------------------------
+                  --READ AIN/AOUT AND STORE OUTPUT IN STRINGS RESERVERD FOR 
+                  aio_val = AIN[batch_number]
+                  ain_str = ain_str + i_to_s(aio_val)     
+                  aio_val = AOUT[batch_number]
+                  aout_str = aout_str + i_to_s(aio_val) 
+                  -----------------------------------------------------------           
+            ENDIF
+
+            --READ AIN/AOUT AND STORE OUTPUT IN STRINGS RESERVERD FOR 
+            io_val = DIN[batch_number]
+            din_str = din_str + b_to_s(io_val)     
+            io_val = DOUT[batch_number]
+            dout_str = dout_str + b_to_s(io_val)    
+            ----------------------------------------------------------------               
+      ENDFOR
+      -- Since the total lenght of RDI/RDO AND AIN/AOUT IS NOT THAT HUGE, JUST CONCANATE THEM INTO ONE BIGGER STRING 
+      apr_ttl_str = rin_str + rout_str + ain_str + aout_str
+      BYTES_AHEAD(file_var, entry, STATUS)
+      --wRITE STRINGS
+      WRITE file_var(din_str)
+      WRITE file_var(dout_str)
+      WRITE file_var(apr_ttl_str)
+      --cLOSE THE FILE AND REDO WHAT WE HAVE DONE SO FAR
+      CLOSE FILE file_var     
+ENDWHILE
+
+WRITE('DISCONNECTING FROM READ IO SERVICE, YOU WILL NEED TO RESET AND RUN THE PROGRAM AGAIN.',CR) 
+MSG_DISCO('S5:',STATUS)
+WRITE('Done.',CR)      
+
+END IO_SERVER_RD

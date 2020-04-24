@@ -1,0 +1,131 @@
+-- karel program to LISTEN ON tcp IP PORT 59003 FOR EDITING IO VALUES ON r30 FANUC CONTROLLERS
+-- establish a TCP connection on your robot ip with defined port(59003), send 5 digit string to control IOs(DOUT,RDO,AOUT)
+-- the first digit specifies IO tYPE(1 = DOUT, 2 = RDO, 3 = AOUT)
+-- the digits 3 digits in middle specifies IO index(from 1 up tp 512)
+-- the last digit is IO value to be set
+
+
+
+PROGRAM IO_SERVER_WR
+%STACKSIZE = 4000
+%NOLOCKGROUP
+%NOPAUSE=ERROR+COMMAND+TPENABLE
+%ENVIRONMENT uif
+%ENVIRONMENT sysdef
+%ENVIRONMENT memo
+%ENVIRONMENT kclop
+%ENVIRONMENT bynam
+%ENVIRONMENT fdev
+%ENVIRONMENT flbt
+%INCLUDE klevccdf
+%INCLUDE klevkeys
+%INCLUDE klevkmsk
+-------------------------------------------------------------------------------
+--Program variables used to listen to commands and set DOUT, AOUT, RDO outputs on FANUC rb30 Controller
+VAR
+      file_var : FILE
+      temp_str : STRING[5]
+      cmnd     : INTEGER
+      entry    : INTEGER
+      STATUS   : INTEGER
+      io_type  : STRING[1]
+      io_index : STRING[3]
+      io_val   : STRING[1]
+      io_type_int  : INTEGER
+      io_index_int : INTEGER
+      io_val_int   : INTEGER
+
+-- INTEGER TO BOOLEAN CONVERTER
+ROUTINE i_to_b(b : INTEGER) : BOOLEAN
+  BEGIN
+    IF b = 0 THEN
+      RETURN(OFF)
+    ELSE
+      RETURN(ON)
+    ENDIF
+END i_to_b
+
+
+--Begin the program
+BEGIN
+
+restart::
+--This must be called before we can use FILE
+SET_FILE_ATR(file_var, ATR_IA)
+
+-- set the server port before doing a connect
+-- we use port 59003
+--NOTE; WHEN YOU CREATE A SERVER FOR THIS PROGRAM IN TEACH PENDANT, IN SYSTEM VARIABLES GO TO , HOSTS_CFG, FIND THE SERVER YOU ARE PLANNING 
+--TO USE(S6 FOR THIS PROGRAM) , SELECT $SERVER_PORT AND SET IT TO 59003 OR SOME OTHER AVAIABLE NUMBER
+SET_VAR(entry, '*SYSTEM*','$HOSTS_CFG[6].$SERVER_PORT',59003,STATUS)
+
+--debug meesage printed on teach pendant at the beggining program
+WRITE('Starting server for IO writing service..',CR)
+
+--Connect to server no:6(S6)
+MSG_CONNECT('S6:',STATUS)
+
+--debug message to show wheter connection was successful
+WRITE(' CONNECT STATUS = ',STATUS,CR)
+IF STATUS > 0 THEN
+  WRITE(' There was an error while initilizing IO write Service BUT we will try to connect again, trying...  exit code = ',STATUS,CR)
+  GO TO restart
+ELSE
+  WRITE('Success initilizing IO write service')  
+ENDIF
+
+--if connection is allright loop 
+--Listens to 5 digit string from TCP Port on 59003
+-- the first digit specifies IO tYPE(1 = DOUT, 2 = RDO, 3 = AOUT)
+-- the digits 3 digits in middle specifies IO index(from 1 up tp 512)
+-- the last digit is IO value to be set
+
+WHILE STATUS = 0 DO
+      OPEN FILE file_var ('rw','S6:')
+      BYTES_AHEAD(file_var, entry, STATUS)
+      READ file_var (temp_str::5)
+
+      io_type = SUB_STR(temp_str,1,1)
+      io_index = SUB_STR(temp_str,2,3)
+      io_val = SUB_STR(temp_str,5,1)
+
+      --WRITE('receive:',temp_str,CR)
+      --WRITE('receive:',io_type,CR)
+      --WRITE('receive:',io_index,CR)
+      --WRITE('receive:',io_val,CR)
+
+      -- Convert to Integers
+      CNV_STR_INT(io_type,io_type_int)
+      CNV_STR_INT(io_index,io_index_int)
+      CNV_STR_INT(io_val,io_val_int)
+
+      --WRITE to DOUT
+      ------------------------------------------
+      IF io_type_int = 1 THEN
+        IF io_index_int < 513 THEN
+          DOUT[io_index_int] = i_to_b(io_val_int)
+        ENDIF  
+      ENDIF  
+
+      --WRITE to RDO
+      ------------------------------------------
+      IF io_type_int = 2 THEN
+        IF io_index_int < 9 THEN
+          RDO[io_index_int] = i_to_b(io_val_int)
+        ENDIF  
+      ENDIF  
+
+      --WRITE to AOUT
+      ------------------------------------------
+      IF io_type_int = 3 THEN
+        IF io_index_int < 9 THEN
+          AOUT[io_index_int] = io_val_int
+        ENDIF  
+      ENDIF  
+      --cLOSE THE FILE AND WAIT FOR ANOTHER CONNECTION
+      CLOSE FILE file_var     
+ENDWHILE  
+WRITE('DISCONNECTING FROM WRITE IO SERVICE, YOU WILL NEED TO RESET AND RUN THE PROGRAM AGAIN.',CR)      
+MSG_DISCO('S6:',STATUS)
+WRITE('Done.',CR)      
+END IO_SERVER_WR

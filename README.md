@@ -1,174 +1,80 @@
-# fanuc_ros_cgio
-
-## Deprecated
-
-This library and the Karel programs are deprecated.
-
-Please see [gavanderhoorn/dominh](https://github.com/gavanderhoorn/dominh) for a replacement.
-
-This readme and all files in this repository are kept for archival purposes only.
+# fanuc_io
 
 ## Overview
 
-This is a simple Fanuc Karel CGI-like program that allows access to controller
-IOs through the web server running on a Fanuc controller.
+This is a simple Karel based IO read/edit service with TCP and User Socket Messaging , you will need to setup two servers on you Teach pendant
+preferably S5:, S6:,
 
-**NOTE**: this is only meant as a convenience tool for quick and incidental
-external access to a controller's IO without needing to use any additional
-hardware. Do not use this on production systems or in contexts where any kind
-of determinism is required. The author recommends using any of the supported
-fieldbuses in those cases.
+## SETUP SERVERS
+ON FANUC TEACH PENDANT DO ; 
+> MENU > SETUP > ==> > ==> > Host Comm > F4 > Servers
+Here you should be able to see listed servers, The programs rpovoded in the repo are configured to use S5 AND S6.
+Configure and start this servers, THE PROTOCOL should be SM(socket messaging)
 
+## CONFIGURE PORTS
+ON FANUC TEACH PENDANT DO ; 
+> MENU > NEXT > SYSTEM > ==> > Variables > $HOSTS_CFG 
+Here you will see lists of avaliables hosts, according to the index of server that you configured in above step(S5 S6 IN THIS CASE);
+enter to that index and find $SERVER_PORT to an avaliable port, for the programs in this repo this ports are configured to be 
 
-## TOC
+S5 ; 59002
+S6 ; 59003
 
-1. [Requirements](#requirements)
-2. [Installation](#installation)
-3. [Example usage](#example-usage)
-4. [Parameters](#parameters)
-5. [Return documents](#return-documents)
-6. [Limitations / Known issues](#limitations--known-issues)
-7. [Bugs, feature requests, etc](#bugs-feature-requests-etc)
+## Transfer .kl to .pc (Buld the KAREL files)
+.kl files includes source codes but they need to be build in order them to be transfered to controller
+for this unfourtunetly you will need a windows machine and Licence from fanuc for ktrans.exe compiler. you also need to be careful to target the version of your controller running on. For example I compile the files and target them to V8.30-1 VERSION WITH;
 
+> "C:\Program Files (x86)\FANUC\WinOLPC\bin\ktrans.exe" write_io_server.kl /ver V8.30-1
 
-## Requirements
+> "C:\Program Files (x86)\FANUC\WinOLPC\bin\ktrans.exe" read_io_server.kl /ver V8.30-1
 
-As this is written in Karel, option `R632` is a base requirement. In addition,
-this needs the base *Web Server* (`HTTP`) and the *Web Server Enhancements*
-(`R626`) options.
+the .pc files corresponding should be created under same directory, the repo currently contains .pc files for specified version 
+ 
+Transfer the .pc files to controller via USB or FTP , REFER TO FANUC manual for details
 
-Other requirements include a functioning networking setup (make sure you can
-ping the controller and the controller's website shows up when opening
-`http://robot_ip`), and correctly configured *HTTP Authentication* settings.
-Either unlock the *KAREL* resource completely, set global credentials or add an
-entry allowing access to the `ros_cgio` Karel program only. Refer to section
-6.5 *HTTP AUTHENTICATION* of the *FANUC Robot series - Ethernet Function -
-Operator's Manual* (document `B-82974EN` for the R-30iA) for more
-information.
+## Run The programs
+if you would like to run these programs concurently, write a TP program with Teach Pendant, it should look like;
 
+RUN IO_SERVER_RD
+RUN IO_SERVER_WR
 
-## Installation
+and then start this program with 
+Deadman Switch + SHIFT + RESET
+Deadman Switch + SHIFT + FWD
 
-Translate the `ros_cgio.kl` either with Roboguide or with the supplied
-`Makefile`. The latter will require a compatible version of GNU Make for
-Windows to be available.
+You can also run each program individually from teach pendant
 
-Finally copy the resultant p-code file to the controller. Make sure to check
-the web server security settings (see [Requirements](#requirements)).
+ ## A quick test with TELNET service
 
-No further setup is required.
+ In order to test , you can use TELNET(I used windows machine but it is also avaliable for Linux)
 
+in a windows machine start a command prompt 
 
-## Example usage
+> telnet robot_ip 59002 
 
-Use any HTTP capable client to interact with the program. See the
-[Parameters](#parameters) section for more information on parameters and their
-values.
+This should start the IO data flow in the prompt
 
-### Read
+similarly
+> telnet robot_ip 59003
+Enter 5 digits
+where;
+-- the first digit specifies IO tYPE(1 = DOUT, 2 = RDO, 3 = AOUT)
+-- the 3 digits in middle specifies IO index(from 1 up tp 512)
+-- the last digit is IO value to be set
 
-The following shows a *read* of the second *Digital output* port on the
-controller:
+and check wheter that worked
 
-```bash
-$ curl -s "http://robot_ip/KAREL/ros_cgio?io_op=read&io_type=2&io_idx=2"
-{"result" : "success", "op" : "read", "type" : "2", "idx" : "2", "value" : "1"}
-```
-
-The response shows the port is currently in the `ON` (1) state.
-
-### Write
-
-The following shows a *write* to the first *Robot digital output* port on
-the controller:
-
-```bash
-$ curl -s "http://robot_ip/KAREL/ros_cgio?io_op=write&io_type=9&io_idx=1&io_val=1"
-{"result" : "success", "op" : "write", "type" : "9", "idx" : "1", "value" : "1"}
-```
-
-The response shows the port was set to the `ON` (1) state.
-
-See [fanuc_ros_cgio_py][] for a Python library providing a more convenient
-interface.
-
-
-## Parameters
-
-The following parameters are used by the script. Note that for *reads*, the
-`io_val` parameter is not required (it will be ignored if set).
-
-### io_op
-
-The type of operation to perform. Use `read` for reading, `write` for
-writing.
-
-### io_type
-
-The 'type' of the IO port. This corresponds directly to the `port_type`
-parameter of the `GET_PORT_VAL(..)` and `SET_PORT_VAL(..)` Karel routines,
-and expects the same values. See `FR:\kliotyps.kl` for defined values.
-
-Note that the current implementation supports reading and writing to *digital*
-type IO ports only.
-
-### io_idx
-
-The numerical index into the port array that is to be read from or written to.
-One-based. Corresponds directly to the indices shown on the various IO screens
-on the teach pendant.
-
-Invalid values will result in an error document returned.
-
-### io_val
-
-In case of a `write` operation, the value to be written. For *Digital output*
-ports, `0` is `OFF`, anything else is `ON`. For *Grouped outputs*, the value
-is copied directly into the output. Maximum value is limited by the width of
-the group.
-
-Note that this parameter is only required for *writes*, and is ignored in case
-`io_op` is set to `read`.
-
-
-## Return documents
-
-Return documents are JSON encoded, and will include the result of the requested
-operation (either `success` or `error`), as well as a copy of the request
-parameters that were provided.
-
-In case of an error, only a `reason` field is included in the document. The
-following shows a *write* to a non-existing *Digital output* port and the
-returned document:
-
-```bash
-$ curl -s "http://robot_ip/KAREL/ros_cgio?io_op=write&io_type=2&io_idx=1000&io_val=0"
-{"result" : "error", "reason" : "Port write error: 13002"}
-```
-
-The reason includes the specific error code returned by the `SET_PORT_VAL`
-Karel routine (in this case: `PRIO-002: Illegal port number`).
+**NOTE**: Do not use this on production systems or in contexts where any kind
+of determinism is required.
 
 
 ## Limitations / Known issues
-
-The following limitations and known issues exist:
-
- - reads/writes only a single port at a time
- - only supports digital IO ports (`dout`, `rout`, etc)
- - no checks on values in case of writing (anything `> 0` will be interpreted
-   as `ON`)
- - no checks on whether a WRITE was successful or not
- - HTTP headers returned will not reflect outcome of the request (ie:
-   `HTTP/1.0 200 OK` is always returned, even if the requested operation
-   failed)
+* No check wheter IO write was successfull
+* only LIMITED IOs are used
+* requires Socket Messaging option to be installedon Fanuc Robot controller
 
 
 ## Bugs, feature requests, etc
 
 Please use the [GitHub issue tracker][].
 
-
-
-[GitHub issue tracker]: https://github.com/gavanderhoorn/fanuc_ros_cgio/issues
-[fanuc_ros_cgio_py]: https://github.com/gavanderhoorn/fanuc_ros_cgio_py
