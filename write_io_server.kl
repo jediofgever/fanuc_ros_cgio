@@ -23,7 +23,7 @@ PROGRAM IO_SERVER_WR
 -------------------------------------------------------------------------------
 --Program variables used to listen to commands and set DOUT, AOUT, RDO outputs on FANUC rb30 Controller
 VAR
-      file_var : FILE
+      file_write : FILE
       temp_str : STRING[5]
       cmnd     : INTEGER
       entry    : INTEGER
@@ -51,7 +51,7 @@ BEGIN
 
 restart::
 --This must be called before we can use FILE
-SET_FILE_ATR(file_var, ATR_IA)
+SET_FILE_ATR(file_write, ATR_IA)
 
 -- set the server port before doing a connect
 -- we use port 59003
@@ -62,16 +62,22 @@ SET_VAR(entry, '*SYSTEM*','$HOSTS_CFG[6].$SERVER_PORT',59003,STATUS)
 --debug meesage printed on teach pendant at the beggining program
 WRITE('Starting server for IO writing service..',CR)
 
+--dISConnect to server no:6(S6)
+MSG_DISCO('S6:',STATUS)
+
+
 --Connect to server no:6(S6)
 MSG_CONNECT('S6:',STATUS)
 
 --debug message to show wheter connection was successful
 WRITE(' CONNECT STATUS = ',STATUS,CR)
 IF STATUS > 0 THEN
-  WRITE(' There was an error while initilizing IO write Service BUT we will try to connect again, trying...  exit code = ',STATUS,CR)
+  WRITE(' There was an errorSTARTING IO write Service = ',STATUS,CR)
+  MSG_DISCO('S6:',STATUS)
+  CLOSE FILE file_write     
   GO TO restart
 ELSE
-  WRITE('Success initilizing IO write service')  
+  WRITE('Success initilizing IO write service!!!')  
 ENDIF
 
 --if connection is allright loop 
@@ -81,9 +87,9 @@ ENDIF
 -- the last digit is IO value to be set
 
 WHILE STATUS = 0 DO
-      OPEN FILE file_var ('rw','S6:')
-      BYTES_AHEAD(file_var, entry, STATUS)
-      READ file_var (temp_str::5)
+      OPEN FILE file_write ('rw','S6:')
+      BYTES_AHEAD(file_write, entry, STATUS)
+      READ file_write (temp_str::5)
 
       io_type = SUB_STR(temp_str,1,1)
       io_index = SUB_STR(temp_str,2,3)
@@ -123,7 +129,7 @@ WHILE STATUS = 0 DO
         ENDIF  
       ENDIF  
       --cLOSE THE FILE AND WAIT FOR ANOTHER CONNECTION
-      CLOSE FILE file_var     
+      CLOSE FILE file_write     
 ENDWHILE  
 WRITE('DISCONNECTING FROM WRITE IO SERVICE, YOU WILL NEED TO RESET AND RUN THE PROGRAM AGAIN.',CR)      
 MSG_DISCO('S6:',STATUS)

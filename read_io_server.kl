@@ -27,7 +27,7 @@ PROGRAM IO_SERVER_RD
 %INCLUDE klevkmsk
 -------------------------------------------------------------------------------
 VAR
-      file_var : FILE
+      file_read : FILE
       dout_str : STRING[128]
       din_str : STRING[128]
       aout_str : STRING[8]
@@ -97,7 +97,7 @@ ain_str = 'AI'
 aout_str= 'AO'
 
 --must be called to use FILE
-SET_FILE_ATR(file_var, ATR_IA)
+SET_FILE_ATR(file_read, ATR_IA)
 
 -- set the server port before doing a connect
 SET_VAR(entry, '*SYSTEM*','$HOSTS_CFG[5].$SERVER_PORT',59002,STATUS)
@@ -105,22 +105,27 @@ SET_VAR(entry, '*SYSTEM*','$HOSTS_CFG[5].$SERVER_PORT',59002,STATUS)
 --debug meesag printed on teach pendant
 WRITE('Starting server for IO Reading service..',CR)
 
+--dISConnect to server no:5(S5)
+MSG_DISCO('S5:',STATUS)
+
 --Connect to server no:5(S5)
 MSG_CONNECT('S5:',STATUS)
 
 --debug message to show wheter connection was successful
 WRITE(' CONNECT STATUS = ',STATUS,CR)
 IF STATUS > 0 THEN
-  WRITE(' There was an error while initilizing IO write Service BUT we will try to connect again, trying...  exit code = ',STATUS,CR)
+  WRITE(' There was an error STARTING IO write Service = ',STATUS,CR)
+  MSG_DISCO('S5:',STATUS)
+  CLOSE FILE file_read     
   GO TO restart
 ELSE
-  WRITE('Success initilizing IO write service')  
+  WRITE('Success initilizing IO write service!!!')  
 ENDIF
 
 --if connection is start loop 
 WHILE STATUS = 0 DO
       --start a file to push our huge string chunk
-      OPEN FILE file_var ('rw','S5:')
+      OPEN FILE file_read ('rw','S5:')
       --we will use 128 IO values max, you can adjust this to your own number of IOs      
       FOR batch_number = 1 TO 128 DO
 
@@ -151,13 +156,13 @@ WHILE STATUS = 0 DO
       ENDFOR
       -- Since the total lenght of RDI/RDO AND AIN/AOUT IS NOT THAT HUGE, JUST CONCANATE THEM INTO ONE BIGGER STRING 
       apr_ttl_str = rin_str + rout_str + ain_str + aout_str
-      BYTES_AHEAD(file_var, entry, STATUS)
+      BYTES_AHEAD(file_read, entry, STATUS)
       --wRITE STRINGS
-      WRITE file_var(din_str)
-      WRITE file_var(dout_str)
-      WRITE file_var(apr_ttl_str)
+      WRITE file_read(din_str)
+      WRITE file_read(dout_str)
+      WRITE file_read(apr_ttl_str)
       --cLOSE THE FILE AND REDO WHAT WE HAVE DONE SO FAR
-      CLOSE FILE file_var     
+      CLOSE FILE file_read     
 ENDWHILE
 
 WRITE('DISCONNECTING FROM READ IO SERVICE, YOU WILL NEED TO RESET AND RUN THE PROGRAM AGAIN.',CR) 
