@@ -25,7 +25,6 @@ PROGRAM IO_SERVER_WR
 VAR
       file_write : FILE
       temp_str : STRING[5]
-      cmnd     : INTEGER
       entry    : INTEGER
       STATUS   : INTEGER
       io_type  : STRING[1]
@@ -34,6 +33,8 @@ VAR
       io_type_int  : INTEGER
       io_index_int : INTEGER
       io_val_int   : INTEGER
+      destroy      : INTEGER
+
 
 -- INTEGER TO BOOLEAN CONVERTER
 ROUTINE i_to_b(b : INTEGER) : BOOLEAN
@@ -50,87 +51,104 @@ END i_to_b
 BEGIN
 
 restart::
---This must be called before we can use FILE
-SET_FILE_ATR(file_write, ATR_IA)
 
--- set the server port before doing a connect
--- we use port 59003
---NOTE; WHEN YOU CREATE A SERVER FOR THIS PROGRAM IN TEACH PENDANT, IN SYSTEM VARIABLES GO TO , HOSTS_CFG, FIND THE SERVER YOU ARE PLANNING 
---TO USE(S6 FOR THIS PROGRAM) , SELECT $SERVER_PORT AND SET IT TO 59003 OR SOME OTHER AVAIABLE NUMBER
+SET_FILE_ATR(file_write, ATR_IA)
 SET_VAR(entry, '*SYSTEM*','$HOSTS_CFG[6].$SERVER_PORT',59003,STATUS)
 
---debug meesage printed on teach pendant at the beggining program
-WRITE('Starting server for IO writing service..',CR)
+WRITE('Starting server for IO Reading service..',CR)
 
---dISConnect to server no:6(S6)
 MSG_DISCO('S6:',STATUS)
-
-
---Connect to server no:6(S6)
 MSG_CONNECT('S6:',STATUS)
 
---debug message to show wheter connection was successful
 WRITE(' CONNECT STATUS = ',STATUS,CR)
-IF STATUS > 0 THEN
-  WRITE(' There was an errorSTARTING IO write Service = ',STATUS,CR)
-  MSG_DISCO('S6:',STATUS)
-  CLOSE FILE file_write     
-  GO TO restart
-ELSE
-  WRITE('Success initilizing IO write service!!!')  
-ENDIF
 
---if connection is allright loop 
---Listens to 5 digit string from TCP Port on 59003
--- the first digit specifies IO tYPE(1 = DOUT, 2 = RDO, 3 = AOUT)
--- the digits 3 digits in middle specifies IO index(from 1 up tp 512)
--- the last digit is IO value to be set
+ 
+IF STATUS = 0 THEN
 
-WHILE STATUS = 0 DO
-      OPEN FILE file_write ('rw','S6:')
-      BYTES_AHEAD(file_write, entry, STATUS)
-      READ file_write (temp_str::5)
+    WRITE('Success initilizing IO WRITE service!!!')  
 
-      io_type = SUB_STR(temp_str,1,1)
-      io_index = SUB_STR(temp_str,2,3)
-      io_val = SUB_STR(temp_str,5,1)
+    loop::
+    
+    --if connection is allright loop 
+    --Listens to 5 digit string from TCP Port on 59003
+    -- the first digit specifies IO tYPE(1 = DOUT, 2 = RDO, 3 = AOUT)
+    -- the digits 3 digits in middle specifies IO index(from 1 up tp 512)
+    -- the last digit is IO value to be set
 
-      --WRITE('receive:',temp_str,CR)
-      --WRITE('receive:',io_type,CR)
-      --WRITE('receive:',io_index,CR)
-      --WRITE('receive:',io_val,CR)
+    CLR_IO_STAT(file_write)
+    OPEN FILE file_write ('rw','S6:') 
+    CLR_IO_STAT(file_write)
+    BYTES_AHEAD(file_write, entry, STATUS)
+    
+    READ file_write (temp_str::5)
 
-      -- Convert to Integers
-      CNV_STR_INT(io_type,io_type_int)
-      CNV_STR_INT(io_index,io_index_int)
-      CNV_STR_INT(io_val,io_val_int)
 
-      --WRITE to DOUT
-      ------------------------------------------
-      IF io_type_int = 1 THEN
-        IF io_index_int < 513 THEN
-          DOUT[io_index_int] = i_to_b(io_val_int)
+    IF UNINIT(temp_str) THEN
+        WRITE ('io write is Unint', CR)
+        MSG_DISCO('S6:',STATUS)
+        MSG_CONNECT('S6:',STATUS)
+        GO TO loop
+    ENDIF
+
+
+    io_type = SUB_STR(temp_str,1,1)
+    io_index = SUB_STR(temp_str,2,3)
+    io_val = SUB_STR(temp_str,5,1)
+
+    IF UNINIT(io_type) THEN
+      GO TO restart
+    ENDIF
+
+    WRITE('recieved:',temp_str,CR)
+    
+
+    IF STR_LEN(temp_str) = 5 THEN
+
+        -- Convert to Integers
+        CNV_STR_INT(io_type,io_type_int)
+        CNV_STR_INT(io_index,io_index_int)
+        CNV_STR_INT(io_val,io_val_int)
+
+
+        IF UNINIT(io_index_int) THEN
+          GO TO restart
+        ENDIF
+
+        destroy  = io_index_int + io_val_int + io_type_int 
+        IF destroy = 0 THEN
+          WRITE ('Destrying connection!', CR)
+          CLOSE FILE file_write
+          GO TO restart
+        ENDIF
+
+        --WRITE to DOUT
+        ------------------------------------------
+        IF io_type_int = 1 THEN
+          IF io_index_int < 513 THEN
+            DOUT[io_index_int] = i_to_b(io_val_int)
+          ENDIF  
         ENDIF  
-      ENDIF  
 
-      --WRITE to RDO
-      ------------------------------------------
-      IF io_type_int = 2 THEN
-        IF io_index_int < 9 THEN
-          RDO[io_index_int] = i_to_b(io_val_int)
+        --WRITE to RDO
+        ------------------------------------------
+        IF io_type_int = 2 THEN
+          IF io_index_int < 9 THEN
+            RDO[io_index_int] = i_to_b(io_val_int)
+          ENDIF  
         ENDIF  
-      ENDIF  
 
-      --WRITE to AOUT
-      ------------------------------------------
-      IF io_type_int = 3 THEN
-        IF io_index_int < 9 THEN
-          AOUT[io_index_int] = io_val_int
-        ENDIF  
-      ENDIF  
+        --WRITE to AOUT
+        ------------------------------------------
+        IF io_type_int = 3 THEN
+          IF io_index_int < 9 THEN
+            AOUT[io_index_int] = io_val_int
+          ENDIF  
+        ENDIF
+      ENDIF    
       --cLOSE THE FILE AND WAIT FOR ANOTHER CONNECTION
-      CLOSE FILE file_write     
-ENDWHILE  
+      CLOSE FILE file_write
+      GO TO loop     
+ENDIF  
 WRITE('DISCONNECTING FROM WRITE IO SERVICE, YOU WILL NEED TO RESET AND RUN THE PROGRAM AGAIN.',CR)      
 MSG_DISCO('S6:',STATUS)
 GO TO restart
