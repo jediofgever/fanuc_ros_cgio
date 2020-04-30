@@ -34,6 +34,7 @@ VAR
       io_index_int : INTEGER
       io_val_int   : INTEGER
       destroy      : INTEGER
+      shutdwn_req_ : BOOLEAN
 
 
 -- INTEGER TO BOOLEAN CONVERTER
@@ -49,107 +50,140 @@ END i_to_b
 
 --Begin the program
 BEGIN
+shutdwn_req_ = FALSE
+temp_str = '99999'
+io_type = '9'
+io_index = '999'
+io_val = '9'
 
-restart::
+io_type_int = 9 
+io_index_int = 999
+io_val_int = 9
 
-SET_FILE_ATR(file_write, ATR_IA)
+
+
+
 SET_VAR(entry, '*SYSTEM*','$HOSTS_CFG[6].$SERVER_PORT',59003,STATUS)
 
-WRITE('Starting server for IO Reading service..',CR)
+
+IF STATUS <> 0 THEN
+  WRITE('IO_WRITE: SET_VAR FAILED',CR)
+  RETURN
+ENDIF
 
 MSG_DISCO('S6:',STATUS)
-MSG_CONNECT('S6:',STATUS)
 
-WRITE(' CONNECT STATUS = ',STATUS,CR)
 
- 
-IF STATUS = 0 THEN
+WHILE (NOT shutdwn_req_) DO
 
-    WRITE('Success initilizing IO WRITE service!!!')  
+    MSG_CONNECT('S6:',STATUS)
 
-    loop::
     
-    --if connection is allright loop 
-    --Listens to 5 digit string from TCP Port on 59003
-    -- the first digit specifies IO tYPE(1 = DOUT, 2 = RDO, 3 = AOUT)
-    -- the digits 3 digits in middle specifies IO index(from 1 up tp 512)
-    -- the last digit is IO value to be set
+    WRITE('IO_WRITE: CONNECT STATUS = ',STATUS,CR)
+    IF STATUS <> 0  THEN
+      WRITE('IO WRITE: SOCKET ACCEPT ERROR')
+      --shutdwn_req_ = TRUE
+      GOTO lbl_break0
+    ENDIF
 
-    CLR_IO_STAT(file_write)
-    OPEN FILE file_write ('rw','S6:') 
-    CLR_IO_STAT(file_write)
-    BYTES_AHEAD(file_write, entry, STATUS)
-    
-    READ file_write (temp_str::5)
+    WRITE('IO WRITE: CONNECTED')
 
 
-    IF UNINIT(temp_str) THEN
-        WRITE ('io write is Unint', CR)
+    --CLIENT CONNECTED
+    SET_FILE_ATR(file_write, ATR_IA)
+    OPEN FILE file_write ('rw','S6:')
+
+
+    WHILE (NOT shutdwn_req_) DO
+
+                      --if connection is allright loop 
+                    --Listens to 5 digit string from TCP Port on 59003
+                    -- the first digit specifies IO tYPE(1 = DOUT, 2 = RDO, 3 = AOUT)
+                    -- the digits 3 digits in middle specifies IO index(from 1 up tp 512)
+                    -- the last digit is IO value to be set
+
+
+
+                    CLR_IO_STAT(file_write)
+                    STATUS = IO_STATUS(file_write)
+                    READ file_write (temp_str::5)
+                    STATUS = IO_STATUS(file_write)
+
+                    IF (STATUS <> 0) THEN
+                        GOTO lbl_break1
+                    ENDIF
+
+                    IF UNINIT(temp_str) THEN
+                      GOTO lbl_break1
+                    ENDIF  
+
+                    io_type = SUB_STR(temp_str,1,1)
+                    io_index = SUB_STR(temp_str,2,3)
+                    io_val = SUB_STR(temp_str,5,1)
+
+                    WRITE('IO WRITE: recieved =',temp_str,CR)
+                    
+                    IF STR_LEN(temp_str) = 5 THEN
+
+                        -- Convert to Integers
+                        
+                        IF UNINIT(io_type) THEN
+                          GOTO lbl_break1
+                        ENDIF  
+
+                        IF UNINIT(io_type_int) THEN
+                          GOTO lbl_break1
+                        ENDIF  
+
+                        CNV_STR_INT(io_type,io_type_int)
+                        CNV_STR_INT(io_index,io_index_int)
+                        CNV_STR_INT(io_val,io_val_int)
+
+                        --WRITE to DOUT
+                        ------------------------------------------
+                        IF io_type_int = 1 THEN
+                          IF io_index_int < 513 THEN
+                            DOUT[io_index_int] = i_to_b(io_val_int)
+                          ENDIF  
+                        ENDIF  
+
+                        --WRITE to RDO
+                        ------------------------------------------
+                        IF io_type_int = 2 THEN
+                          IF io_index_int < 9 THEN
+                            RDO[io_index_int] = i_to_b(io_val_int)
+                          ENDIF  
+                        ENDIF  
+
+                        --WRITE to AOUT
+                        ------------------------------------------
+                        IF io_type_int = 3 THEN
+                          IF io_index_int < 9 THEN
+                            AOUT[io_index_int] = io_val_int
+                          ENDIF  
+                        ENDIF
+
+                      ENDIF    
+
+    ENDWHILE
+
+    IF ((STATUS = 0) AND (NOT shutdwn_req_)) THEN GOTO lbl_cont0; ENDIF
+
+    lbl_break0::
+        CLOSE FILE file_write
         MSG_DISCO('S6:',STATUS)
-        MSG_CONNECT('S6:',STATUS)
-        GO TO loop
-    ENDIF
+        DELAY(5000)
 
+	  lbl_cont0::
+        WRITE('IO WRITE : WAIT FOR NEW CLIENT \n')
+        MSG_DISCO('S6:',STATUS)
+		    DELAY(2000)
 
-    io_type = SUB_STR(temp_str,1,1)
-    io_index = SUB_STR(temp_str,2,3)
-    io_val = SUB_STR(temp_str,5,1)
+    lbl_break1::
+        MSG_DISCO('S6:',STATUS)
+        DELAY(2000)
 
-    IF UNINIT(io_type) THEN
-      GO TO restart
-    ENDIF
-
-    WRITE('recieved:',temp_str,CR)
-    
-
-    IF STR_LEN(temp_str) = 5 THEN
-
-        -- Convert to Integers
-        CNV_STR_INT(io_type,io_type_int)
-        CNV_STR_INT(io_index,io_index_int)
-        CNV_STR_INT(io_val,io_val_int)
-
-
-        IF UNINIT(io_index_int) THEN
-          GO TO restart
-        ENDIF
-
-        destroy  = io_index_int + io_val_int + io_type_int 
-        IF destroy = 0 THEN
-          WRITE ('Destrying connection!', CR)
-          CLOSE FILE file_write
-          GO TO restart
-        ENDIF
-
-        --WRITE to DOUT
-        ------------------------------------------
-        IF io_type_int = 1 THEN
-          IF io_index_int < 513 THEN
-            DOUT[io_index_int] = i_to_b(io_val_int)
-          ENDIF  
-        ENDIF  
-
-        --WRITE to RDO
-        ------------------------------------------
-        IF io_type_int = 2 THEN
-          IF io_index_int < 9 THEN
-            RDO[io_index_int] = i_to_b(io_val_int)
-          ENDIF  
-        ENDIF  
-
-        --WRITE to AOUT
-        ------------------------------------------
-        IF io_type_int = 3 THEN
-          IF io_index_int < 9 THEN
-            AOUT[io_index_int] = io_val_int
-          ENDIF  
-        ENDIF
-      ENDIF    
-      --cLOSE THE FILE AND WAIT FOR ANOTHER CONNECTION
-      CLOSE FILE file_write
-      GO TO loop     
-ENDIF  
-WRITE('DISCONNECTING FROM WRITE IO SERVICE, YOU WILL NEED TO RESET AND RUN THE PROGRAM AGAIN.',CR)      
+ENDWHILE
 MSG_DISCO('S6:',STATUS)
-GO TO restart
+WRITE('IO WRITE: DESTROYED! \n',CR) 
 END IO_SERVER_WR
