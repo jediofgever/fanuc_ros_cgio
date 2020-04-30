@@ -195,8 +195,6 @@ WHILE (NOT shutdwn_req_) DO
                 IF (STATUS <> 0) THEN
                     GOTO lbl_break1
                 ENDIF
-
-                DELAY(25)
                 
     ENDWHILE
 
