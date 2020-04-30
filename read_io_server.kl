@@ -117,16 +117,6 @@ WHILE (NOT shutdwn_req_) DO
 
 
     --we will use 128 IO values max, you can adjust this to your own number of IOs   
-
-    --REinitilize strings, these strings can be used to parse output in cliuent side
-    din_str = 'DI'
-    dout_str= 'DO'
-    rin_str = 'RI'
-    rout_str= 'RO'
-    ain_str = 'AI'
-    aout_str= 'AO'
-    tem_str = 'vd' 
-    tem_int = 10
   
 
     MSG_CONNECT('S5:',STATUS)
@@ -149,6 +139,17 @@ WHILE (NOT shutdwn_req_) DO
                 CLR_IO_STAT(file_read)
                 STATUS = IO_STATUS(file_read)  
                 READ file_read(tem_str::3)
+
+
+                --REinitilize strings, these strings can be used to parse output in cliuent side
+                din_str = 'DI'
+                dout_str= 'DO'
+                rin_str = 'RI'
+                rout_str= 'RO'
+                ain_str = 'AI'
+                aout_str= 'AO'
+                tem_str = 'vd' 
+                tem_int = 10
 
                 FOR batch_number = 1 TO 126 DO
 
