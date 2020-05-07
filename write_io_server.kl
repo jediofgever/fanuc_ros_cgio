@@ -73,7 +73,6 @@ ENDIF
 
 MSG_DISCO('S6:',STATUS)
 
-
 WHILE (NOT shutdwn_req_) DO
 
     MSG_CONNECT('S6:',STATUS)
@@ -88,11 +87,9 @@ WHILE (NOT shutdwn_req_) DO
 
     WRITE('IO WRITE: CONNECTED')
 
-
     --CLIENT CONNECTED
     SET_FILE_ATR(file_write, ATR_IA)
     OPEN FILE file_write ('rw','S6:')
-
 
     WHILE (NOT shutdwn_req_) DO
 
@@ -101,8 +98,6 @@ WHILE (NOT shutdwn_req_) DO
                     -- the first digit specifies IO tYPE(1 = DOUT, 2 = RDO, 3 = AOUT)
                     -- the digits 3 digits in middle specifies IO index(from 1 up tp 512)
                     -- the last digit is IO value to be set
-
-
 
                     CLR_IO_STAT(file_write)
                     STATUS = IO_STATUS(file_write)
@@ -164,7 +159,7 @@ WHILE (NOT shutdwn_req_) DO
                         ENDIF
 
                       ENDIF    
-
+                      DELAY (100) 
     ENDWHILE
 
     IF ((STATUS = 0) AND (NOT shutdwn_req_)) THEN GOTO lbl_cont0; ENDIF
@@ -172,7 +167,7 @@ WHILE (NOT shutdwn_req_) DO
     lbl_break0::
         CLOSE FILE file_write
         MSG_DISCO('S6:',STATUS)
-        DELAY(5000)
+        DELAY(2000)
 
 	  lbl_cont0::
         WRITE('IO WRITE : WAIT FOR NEW CLIENT \n')
@@ -182,6 +177,8 @@ WHILE (NOT shutdwn_req_) DO
     lbl_break1::
         MSG_DISCO('S6:',STATUS)
         DELAY(2000)
+
+       
 
 ENDWHILE
 MSG_DISCO('S6:',STATUS)

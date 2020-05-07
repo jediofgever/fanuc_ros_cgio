@@ -177,7 +177,9 @@ WHILE (NOT shutdwn_req_) DO
                                 din_str = din_str + b_to_s(io_val)     
                                 io_val = DOUT[batch_number]
                                 dout_str = dout_str + b_to_s(io_val)    
-                                ----------------------------------------------------------------               
+                                ----------------------------------------------------------------   
+                                
+            
                 ENDFOR
                 -- Since the total lenght of RDI/RDO AND AIN/AOUT IS NOT THAT HUGE, JUST CONCANATE THEM INTO ONE BIGGER STRING 
                 apr_ttl_str = rin_str + rout_str + ain_str + aout_str
@@ -195,6 +197,8 @@ WHILE (NOT shutdwn_req_) DO
                 IF (STATUS <> 0) THEN
                     GOTO lbl_break1
                 ENDIF
+
+                DELAY (100)
                 
     ENDWHILE
 
@@ -203,7 +207,7 @@ WHILE (NOT shutdwn_req_) DO
     lbl_break0::
         CLOSE FILE file_read
         MSG_DISCO('S5:',STATUS)
-        DELAY(5000)
+        DELAY(2000)
 
 	  lbl_cont0::
         WRITE('IO READ : WAIT FOR NEW CLIENT \n')
